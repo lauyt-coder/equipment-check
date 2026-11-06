@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>學習裝備檢查站 | 全年欠交紀錄</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .animate-slide-up { animation: slideUp 0.5s ease-out forwards; }
+    .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+    .delay-100 { animation-delay: 100ms; opacity: 0; }
+    .delay-200 { animation-delay: 200ms; opacity: 0; }
+    .delay-300 { animation-delay: 300ms; opacity: 0; }
+    
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800 pb-20">
+  
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, doc, setDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const { useState, useEffect, useMemo } = React;
+
+    // Firebase 系統變數 (由環境提供)
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'equipment-check-app';
+    const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+    let app, auth, db;
+    
+    const firebaseConfig = {
+      apiKey: "AIzaSyAxNk8RmaHTwoDMZPCCP8oLWvui4uKV0lQ",
+      authDomain: "my-web-d9b5c.firebaseapp.com",
+      projectId: "my-web-d9b5c",
+      storageBucket: "my-web-d9b5c.firebasestorage.app",
+      messagingSenderId: "132492034861",
+      appId: "1:132492034861:web:0b4f75ea61754215ae09a4",
+      measurementId: "G-HP9NT7LFKM"
+    };
+
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+
+    // --- 圖示元件 ---
+    const Book = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>;
+    const Notebook = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><rect width="16" height="20" x="4" y="2" rx="2"/></svg>;
+    const FileText = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>;
+    const Plus = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
+    const Info = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>;
+    const Sparkles = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>;
+    const CalendarDays = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>;
+    const Trash2 = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>;
+    const Users = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+    const Cloud = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>;
+    const History = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>;
+    const Backpack = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M8 21v-5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v5"/><path d="M8 10h8"/><path d="M8 14h8"/></svg>;
+    const AlertCircle = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
+
+    // --- 系統設定 ---
+    const SUBJECTS = ['歷史', '中史', '公經社'];
+    const GRADES = ['中一', '中二', '中三', '中四', '中五', '中六'];
+    const CLASSES = ['A', 'B', 'C', 'D'];
+    const ITEM_TYPES = [
+      { id: 'book', name: '課本', icon: Book, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', hover: 'hover:bg-blue-100' },
+      { id: 'note', name: '筆記', icon: Notebook, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', hover: 'hover:bg-purple-100' },
+      { id: 'worksheet', name: '工作紙', icon: FileText, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', hover: 'hover:bg-emerald-100' },
+    ];
+
+    const getTodayString = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    // --- 主程式 ---
+    function App() {
+      const [user, setUser] = useState(null);
+      const [isLoaded, setIsLoaded] = useState(false);
+      const [isCloudEnabled, setIsCloudEnabled] = useState(false);
+
+      const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[0]);
+      const [selectedGrade, setSelectedGrade] = useState(GRADES[0]);
+      const [selectedClass, setSelectedClass] = useState(CLASSES[0]);
+      const [currentDate, setCurrentDate] = useState(getTodayString()); // 用於快速新增或日曆選取
+      
+      const [students, setStudents] = useState([]);
+      const [records, setRecords] = useState({}); // { studentId: { events: [...] } }
+      
+      const [newStudentNum, setNewStudentNum] = useState('');
+      const [newStudentName, setNewStudentName] = useState('');
+      const [isBulkMode, setIsBulkMode] = useState(false);
+      const [bulkText, setBulkText] = useState('');
+      
+      const [showTooltip, setShowTooltip] = useState(null);
+      const [showCTA, setShowCTA] = useState(false);
+      const [deletingId, setDeletingId] = useState(null);
+      
+      // 學生詳細紀錄視窗狀態
+      const [detailModalStudent, setDetailModalStudent] = useState(null);
+
+      // Firebase 登入與同步
+      useEffect(() => {
+        if (!auth) {
+          setIsLoaded(true);
+          return;
+        }
+        setIsCloudEnabled(true);
+        const initAuth = async () => {
+          try {
+            if (initialAuthToken) {
+              await signInWithCustomToken(auth, initialAuthToken);
+            } else {
+              await signInAnonymously(auth);
+            }
+          } catch (err) {
+            console.error("雲端登入失敗:", err);
+            setIsLoaded(true);
+          }
+        };
+        initAuth();
+        const unsubscribe = onAuthStateChanged(auth, (u) => {
+          setUser(u);
+          if (u) setIsLoaded(true);
+        });
+        return () => unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        if (!user || !db) return;
+
+        // 讀取學生
+        const studentsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'students');
+        const unsubscribeStudents = onSnapshot(studentsRef, (snapshot) => {
+          const loadedStudents = [];
+          snapshot.forEach(doc => loadedStudents.push({ id: doc.id, ...doc.data() }));
+          setStudents(loadedStudents);
+        }, (err) => console.error("讀取學生錯誤:", err));
+
+        // 讀取紀錄 (整年)
+        const recordsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'records');
+        const unsubscribeRecords = onSnapshot(recordsRef, (snapshot) => {
+          const loadedRecords = {};
+          snapshot.forEach(doc => { loadedRecords[doc.id] = doc.data(); });
+          setRecords(loadedRecords);
+        }, (err) => console.error("讀取紀錄錯誤:", err));
+
+        return () => { unsubscribeStudents(); unsubscribeRecords(); };
+      }, [user]);
+
+      // 篩選目前班級
+      const currentClassData = useMemo(() => {
+        return students
+          .filter(s => (s.subject || SUBJECTS[0]) === selectedSubject && s.grade === selectedGrade && s.classLevel === selectedClass)
+          .map(student => {
+            const studentRecords = records[student.id]?.events || [];
+            // 計算各項總數
+            const counts = studentRecords.reduce((acc, curr) => {
+              acc[curr.type] = (acc[curr.type] || 0) + 1;
+              acc.total++;
+              return acc;
+            }, { total: 0 });
+
+            return { ...student, records: studentRecords, counts };
+          })
+          .sort((a, b) => {
+            const numA = parseInt(a.studentNumber, 10);
+            const numB = parseInt(b.studentNumber, 10);
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            return (a.studentNumber || '').localeCompare(b.studentNumber || '');
+          });
+      }, [students, records, selectedGrade, selectedClass]);
+
+      // --- 操作功能 ---
+      const handleAddStudent = async (e) => {
+        e.preventDefault();
+        if (!newStudentName.trim()) return;
+        const newId = Date.now().toString();
+        const newStudent = {
+          id: newId,
+          studentNumber: newStudentNum.trim(),
+          name: newStudentName.trim(),
+          subject: selectedSubject,
+          grade: selectedGrade,
+          classLevel: selectedClass
+        };
+        
+        if (db && user) {
+          await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'students', newId), newStudent);
+        } else {
+          setStudents([...students, newStudent]);
+        }
+        setNewStudentName('');
+        setNewStudentNum('');
+      };
+      
+      const handleDeleteStudent = async (studentId) => {
+        if (db && user) {
+          await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'students', studentId));
+          // 可選擇性清理紀錄
+          await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', studentId));
+        } else {
+          setStudents(students.filter(s => s.id !== studentId));
+        }
+        setDeletingId(null);
+      };
+
+      const handleClearClass = async () => {
+        const classStudents = students.filter(s => (s.subject || SUBJECTS[0]) === selectedSubject && s.grade === selectedGrade && s.classLevel === selectedClass);
+        if (classStudents.length === 0) return;
+
+        if (!confirm(`⚠️ 確定要清空「${selectedSubject} - ${selectedGrade}${selectedClass}班」的所有學生與紀錄嗎？此動作無法復原！`)) return;
+
+        if (db && user) {
+          for (const s of classStudents) {
+            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'students', s.id));
+            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', s.id));
+          }
+        } else {
+          const currentIds = new Set(classStudents.map(s => s.id));
+          setStudents(students.filter(s => !currentIds.has(s.id)));
+        }
+      };
+
+      const handleBulkImport = async () => {
+        if (!bulkText.trim()) return;
+        const lines = bulkText.split('\n');
+        const newStudents = [];
+        
+        let currentMaxNum = students
+          .filter(s => (s.subject || SUBJECTS[0]) === selectedSubject && s.grade === selectedGrade && s.classLevel === selectedClass)
+          .reduce((max, s) => Math.max(max, parseInt(s.studentNumber) || 0), 0);
+
+        lines.forEach((line, index) => {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+          
+          const parts = trimmed.split(/\s+/);
+          let sNumber = '';
+          let name = trimmed;
+          
+          if (parts.length > 1 && /^\d+$/.test(parts[0])) {
+            sNumber = parts[0];
+            name = parts.slice(1).join(' ');
+          } else {
+            currentMaxNum += 1;
+            sNumber = currentMaxNum.toString().padStart(2, '0');
+          }
+
+          newStudents.push({
+            id: `${Date.now()}-${index}`,
+            studentNumber: sNumber,
+            name: name,
+            subject: selectedSubject,
+            grade: selectedGrade,
+            classLevel: selectedClass
+          });
+        });
+
+        if (db && user) {
+          for (const s of newStudents) {
+            await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'students', s.id), s);
+          }
+        } else {
+          setStudents([...students, ...newStudents]);
+        }
+        
+        setBulkText('');
+        setIsBulkMode(false);
+      };
+
+      // 新增欠交紀錄 (支援指定日期)
+      const handleAddRecord = async (studentId, itemType, selectedDate = getTodayString()) => {
+        const newEvent = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          date: selectedDate,
+          type: itemType.id,
+          name: itemType.name,
+          timestamp: Date.now()
+        };
+        
+        const currentEvents = records[studentId]?.events || [];
+        const updatedDoc = { events: [...currentEvents, newEvent] };
+        
+        if (db && user) {
+          await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', studentId), updatedDoc);
+        } else {
+          setRecords(prev => ({ ...prev, [studentId]: updatedDoc }));
+        }
+      };
+
+      // 刪除單筆欠交紀錄
+      const handleDeleteRecord = async (studentId, eventId) => {
+        const currentEvents = records[studentId]?.events || [];
+        const updatedEvents = currentEvents.filter(e => e.id !== eventId);
+        const updatedDoc = { events: updatedEvents };
+
+        if (db && user) {
+          await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', studentId), updatedDoc);
+        } else {
+          setRecords(prev => ({ ...prev, [studentId]: updatedDoc }));
+        }
+      };
+
+
+      if (!isLoaded) {
+        return (
+          <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center space-y-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-cyan-500 border-t-transparent"></div>
+            <p className="text-slate-500 font-bold animate-pulse">正在整理書包...</p>
+          </div>
+        );
+      }
+
+      return (
+        <div>
+          {/* Header */}
+          <header className="bg-gradient-to-r from-cyan-600 to-blue-500 text-white pt-10 pb-14 px-6 shadow-lg rounded-b-3xl mb-8 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent"></div>
+            <div className="max-w-4xl mx-auto relative z-10 animate-slide-up flex justify-between items-start">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <Backpack className="w-8 h-8 text-cyan-200" />
+                  <h1 className="text-3xl md:text-4xl font-bold tracking-tight">學習裝備檢查站</h1>
+                </div>
+                <p className="text-lg md:text-xl text-white/90 font-medium">紀錄學生全年欠帶物品，建立良好學習習慣。</p>
+              </div>
+              
+              <div className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${isCloudEnabled ? 'bg-emerald-400/20 text-emerald-100 border border-emerald-400/30' : 'bg-rose-400/20 text-rose-100 border border-rose-400/30'}`}>
+                <Cloud className="w-4 h-4"/>
+                {isCloudEnabled ? '自動儲存中' : '單機模式'}
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-4xl mx-auto px-4 md:px-6 space-y-6">
+            
+            {/* 互動說明區 */}
+            <section className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 animate-slide-up delay-100 flex flex-wrap gap-3 items-center">
+              <div className="flex items-center gap-2 text-slate-600 font-bold mr-2">
+                <Info className="w-5 h-5 text-cyan-500" />
+                <span>站長提示：</span>
+              </div>
+              
+              <button onClick={() => setShowTooltip(showTooltip === 'year' ? null : 'year')} className="px-4 py-2 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 rounded-full text-sm font-bold transition-colors relative">
+                關於全年紀錄
+                {showTooltip === 'year' && (
+                  <div className="absolute top-full left-0 md:left-1/2 md:-translate-x-1/2 mt-2 w-64 bg-slate-800 text-white p-3 rounded-xl text-sm shadow-xl z-20 font-normal">
+                    <p>這裡的次數是「一整學年」的總和，不會每個月歸零。您可以點擊學生的「日曆與紀錄」來查看具體是哪一天忘記帶東西喔！</p>
+                    <div className="absolute -top-2 left-10 md:left-1/2 md:-translate-x-1/2 border-8 border-transparent border-b-slate-800"></div>
+                  </div>
+                )}
+              </button>
+
+              <button onClick={() => setShowTooltip(showTooltip === 'date' ? null : 'date')} className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-full text-sm font-bold transition-colors relative">
+                如何補登過去的日期？
+                {showTooltip === 'date' && (
+                  <div className="absolute top-full left-0 md:left-1/2 md:-translate-x-1/2 mt-2 w-64 bg-slate-800 text-white p-3 rounded-xl text-sm shadow-xl z-20 font-normal">
+                    <p>列表上的快速按鈕預設為「今天」。如果需要補登昨天的紀錄，請點擊學生的「歷史紀錄」按鈕，在彈出視窗中選擇日期再新增即可。</p>
+                    <div className="absolute -top-2 left-10 md:left-1/2 md:-translate-x-1/2 border-8 border-transparent border-b-slate-800"></div>
+                  </div>
+                )}
+              </button>
+            </section>
+
+            {/* 控制面板 */}
+            <section className="flex flex-wrap gap-4 animate-slide-up delay-200">
+              <div className="space-y-1.5 flex-1 min-w-[120px]">
+                <label className="text-sm font-bold text-slate-500">科目</label>
+                <select value={selectedSubject} onChange={(e) => setSelectedSubject(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-cyan-500 font-bold text-slate-700 shadow-sm cursor-pointer">
+                  {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5 flex-1 min-w-[120px]">
+                <label className="text-sm font-bold text-slate-500">年級</label>
+                <select value={selectedGrade} onChange={(e) => setSelectedGrade(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-cyan-500 font-bold text-slate-700 shadow-sm cursor-pointer">
+                  {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5 flex-1 min-w-[120px]">
+                <label className="text-sm font-bold text-slate-500">班別</label>
+                <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-cyan-500 font-bold text-slate-700 shadow-sm cursor-pointer">
+                  {CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </section>
+
+            {/* 學生列表區 */}
+            <section className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden animate-slide-up delay-300">
+              <div className="bg-slate-50 px-6 py-4 flex justify-between items-center border-b border-slate-200">
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  {selectedSubject} - {selectedGrade}{selectedClass}班 紀錄表
+                </h2>
+                <button 
+                  onClick={handleClearClass} 
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 transition-all"
+                >
+                  <Trash2 className="w-4 h-4" /> 清空本班
+                </button>
+              </div>
+
+              <div className="p-4 md:p-6">
+                {currentClassData.length === 0 ? (
+                  <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                    <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                    <p className="text-slate-500 font-medium">這個班級還沒有建立名單。<br/>請在下方新增學生！</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {currentClassData.map((student) => (
+                      <div key={student.id} className="flex flex-col xl:flex-row xl:items-center justify-between p-4 rounded-2xl border border-slate-100 bg-white hover:border-cyan-200 hover:shadow-md transition-all group relative">
+                        
+                        {/* 學生資訊與總計 */}
+                        <div className="flex items-center gap-4 mb-4 xl:mb-0 min-w-[200px]">
+                          <div className="w-12 h-12 shrink-0 rounded-full flex items-center justify-center font-bold text-white shadow-inner bg-gradient-to-br from-cyan-400 to-blue-500">
+                            {student.studentNumber || student.name.charAt(0)}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                              {student.name}
+                              {student.counts.total > 5 && <AlertCircle className="w-4 h-4 text-amber-500" title="累積超過5次"/>}
+                            </h3>
+                            <div className="flex gap-2 mt-1 text-sm font-medium">
+                              <span className="text-slate-500">本學年累計:</span>
+                              <span className={`font-bold ${student.counts.total > 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+                                {student.counts.total} 次
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 快速登記區 & 操作 */}
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex items-center bg-slate-50 p-1.5 rounded-xl border border-slate-100">
+                            <span className="text-xs font-bold text-slate-400 px-2 hidden sm:block">快速登記 (今天)</span>
+                            {ITEM_TYPES.map(item => {
+                              const Icon = item.icon;
+                              const count = student.counts[item.id] || 0;
+                              return (
+                                <button 
+                                  key={item.id}
+                                  onClick={() => handleAddRecord(student.id, item)}
+                                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-sm transition-colors ${item.hover} ${item.color} ${count > 0 ? item.bg + ' border ' + item.border : 'bg-transparent border border-transparent'}`}
+                                  title={`登記今日欠交：${item.name}`}
+                                >
+                                  <Icon className="w-4 h-4"/> 
+                                  <span className="hidden md:inline">{item.name}</span>
+                                  {count > 0 && <span className="ml-1 bg-white/60 px-1.5 rounded-md text-xs">{count}</span>}
+                                  <Plus className="w-3 h-3 ml-auto opacity-50 xl:hidden"/>
+                                </button>
+                              )
+                            })}
+                          </div>
+                          
+                          <div className="w-px h-8 bg-slate-200 hidden xl:block"></div>
+
+                          {/* 歷史紀錄與刪除 */}
+                          <div className="flex items-center gap-2 ml-auto">
+                            <button 
+                              onClick={() => setDetailModalStudent(student)} 
+                              className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-cyan-50 hover:text-cyan-700 text-slate-600 rounded-xl font-bold text-sm transition-colors border border-slate-200 hover:border-cyan-200"
+                            >
+                              <CalendarDays className="w-4 h-4"/> 紀錄
+                            </button>
+
+                            {deletingId === student.id ? (
+                              <div className="flex items-center gap-1 bg-rose-50 p-1 rounded-xl border border-rose-200 absolute right-2 xl:static z-10 shadow-md xl:shadow-none">
+                                <span className="text-xs text-rose-600 font-bold px-1">刪除？</span>
+                                <button onClick={() => handleDeleteStudent(student.id)} className="px-2 py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-xs font-bold transition-colors">是</button>
+                                <button onClick={() => setDeletingId(null)} className="px-2 py-1.5 bg-white hover:bg-slate-100 text-slate-600 rounded-lg text-xs font-bold transition-colors border border-slate-200">否</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setDeletingId(student.id)} className="p-2 text-slate-300 hover:bg-rose-50 hover:text-rose-500 rounded-xl transition-colors" title="刪除學生">
+                                <Trash2 className="w-4.5 h-4.5"/>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 新增學生區 */}
+              <div className="bg-slate-50 p-4 md:p-6 border-t border-slate-200">
+                <div className="flex gap-4 mb-4 border-b border-slate-200">
+                  <button onClick={() => setIsBulkMode(false)} className={`font-bold pb-2 -mb-[1px] border-b-2 transition-colors ${!isBulkMode ? 'border-cyan-500 text-cyan-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>單筆新增</button>
+                  <button onClick={() => setIsBulkMode(true)} className={`font-bold pb-2 -mb-[1px] border-b-2 transition-colors ${isBulkMode ? 'border-cyan-500 text-cyan-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>批次匯入</button>
+                </div>
+
+                {!isBulkMode ? (
+                  <form onSubmit={handleAddStudent} className="flex flex-wrap gap-3 max-w-lg">
+                    <input type="text" placeholder="學號(選填)" value={newStudentNum} onChange={(e) => setNewStudentNum(e.target.value)} className="w-24 bg-white border border-slate-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-cyan-500" />
+                    <input type="text" placeholder="輸入學生姓名..." value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} className="flex-1 min-w-[150px] bg-white border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-cyan-500" />
+                    <button type="submit" disabled={!newStudentName.trim()} className={`flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-cyan-600 hover:bg-cyan-700 shadow-sm`}>
+                      <Plus className="w-5 h-5"/> 加入
+                    </button>
+                  </form>
+                ) : (
+                  <div className="space-y-3">
+                    <textarea rows="4" placeholder="請貼上學生名單 (每行一位)&#10;格式：學號 姓名 (例如：01 陳小明)&#10;若不輸入學號，系統會自動遞增。" value={bulkText} onChange={(e) => setBulkText(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-500 resize-y" />
+                    <button onClick={handleBulkImport} disabled={!bulkText.trim()} className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-cyan-600 hover:bg-cyan-700 shadow-sm w-full sm:w-auto`}>
+                      <Users className="w-5 h-5"/> 一鍵載入名單
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+          </main>
+
+          {/* 歷史紀錄/日曆 視窗 (Modal) */}
+          {detailModalStudent && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]">
+                
+                {/* Modal Header */}
+                <div className="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center relative">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                      <History className="w-5 h-5 text-cyan-600"/> 
+                      {detailModalStudent.name} 的紀錄
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">學號：{detailModalStudent.studentNumber || '無'} | 全年累計：<span className="font-bold text-rose-500">{detailModalStudent.counts.total}次</span></p>
+                  </div>
+                  <button onClick={() => setDetailModalStudent(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors absolute top-5 right-5">✕</button>
+                </div>
+
+                {/* 手動補登區 */}
+                <div className="p-5 border-b border-slate-100 bg-white">
+                  <label className="text-xs font-bold text-slate-500 mb-2 block">新增 / 補登紀錄 (選擇日期)</label>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <input 
+                      type="date" 
+                      value={currentDate} 
+                      onChange={(e) => setCurrentDate(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-500 text-sm font-bold text-slate-700 flex-shrink-0"
+                    />
+                    <div className="flex gap-2 flex-1">
+                      {ITEM_TYPES.map(item => {
+                        const Icon = item.icon;
+                        return (
+                          <button 
+                            key={item.id}
+                            onClick={() => {
+                              handleAddRecord(detailModalStudent.id, item, currentDate);
+                              // 為了讓彈出視窗即時更新，手動更新 local state 的 student (因為 useMemo 在外層)
+                              const newEvent = { id: Date.now().toString(), date: currentDate, type: item.id, name: item.name };
+                              setDetailModalStudent(prev => ({
+                                ...prev, 
+                                records: [...prev.records, newEvent],
+                                counts: { ...prev.counts, [item.id]: (prev.counts[item.id] || 0) + 1, total: prev.counts.total + 1 }
+                              }));
+                            }}
+                            className={`flex-1 flex justify-center items-center gap-1.5 py-2 rounded-xl font-bold text-sm transition-colors border ${item.color} ${item.bg} ${item.border} hover:opacity-80`}
+                          >
+                            <Icon className="w-4 h-4"/> <span className="hidden xs:inline">{item.name}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 歷史時間軸 */}
+                <div className="p-5 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50">
+                  {detailModalStudent.records.length === 0 ? (
+                    <div className="text-center py-10 text-slate-400 font-medium">
+                      <Sparkles className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                      太棒了！沒有任何欠交紀錄。
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* 將紀錄按日期分組並排序 (新到舊) */}
+                      {Object.entries(
+                        detailModalStudent.records.reduce((acc, record) => {
+                          (acc[record.date] = acc[record.date] || []).push(record);
+                          return acc;
+                        }, {})
+                      )
+                      .sort(([dateA], [dateB]) => new Date(dateB) - new Date(dateA))
+                      .map(([date, events]) => (
+                        <div key={date} className="relative pl-4 border-l-2 border-slate-200">
+                          <div className="absolute -left-[5px] top-1.5 w-2 h-2 rounded-full bg-slate-300 ring-4 ring-white"></div>
+                          <h4 className="text-sm font-bold text-slate-700 mb-2">{date}</h4>
+                          <div className="space-y-2">
+                            {events.map(event => {
+                              const itemType = ITEM_TYPES.find(t => t.id === event.type) || ITEM_TYPES[0];
+                              const Icon = itemType.icon;
+                              return (
+                                <div key={event.id} className="flex items-center justify-between bg-white border border-slate-100 p-2.5 rounded-xl shadow-sm">
+                                  <div className={`flex items-center gap-2 text-sm font-bold ${itemType.color}`}>
+                                    <div className={`p-1.5 rounded-lg ${itemType.bg}`}><Icon className="w-4 h-4"/></div>
+                                    未帶{event.name}
+                                  </div>
+                                  <button 
+                                    onClick={() => {
+                                      handleDeleteRecord(detailModalStudent.id, event.id);
+                                      setDetailModalStudent(prev => ({
+                                        ...prev,
+                                        records: prev.records.filter(r => r.id !== event.id),
+                                        counts: { ...prev.counts, [event.type]: prev.counts[event.type] - 1, total: prev.counts.total - 1 }
+                                      }));
+                                    }} 
+                                    className="p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-colors"
+                                    title="刪除此紀錄"
+                                  >
+                                    <Trash2 className="w-4 h-4"/>
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 底部總結 CTA */}
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center">
+            {showCTA && (
+              <div className="mb-4 bg-white px-6 py-4 rounded-2xl shadow-xl border border-cyan-100 animate-slide-up relative text-center min-w-[280px]">
+                <h4 className="text-cyan-600 font-bold mb-1 flex items-center justify-center gap-2"><Sparkles className="w-5 h-5"/> 老師辛苦了</h4>
+                <p className="text-slate-600 font-medium leading-relaxed">「好習慣需要時間培養。<br/>多一點提醒，少一點責備，<br/>陪著孩子慢慢進步！」</p>
+                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 border-8 border-transparent border-t-white"></div>
+              </div>
+            )}
+            <button onClick={() => setShowCTA(!showCTA)} className="bg-cyan-600 hover:bg-cyan-700 text-white px-8 py-3.5 rounded-full font-bold shadow-lg hover:shadow-cyan-500/30 transition-all hover:-translate-y-1 flex items-center gap-2 border-2 border-cyan-400/30">
+              裝備檢查完畢
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
