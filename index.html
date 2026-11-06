@@ -49,25 +49,32 @@
 
     let app, auth, db;
     
-    const firebaseConfig = {
-      apiKey: "AIzaSyAxNk8RmaHTwoDMZPCCP8oLWvui4uKV0lQ",
-      authDomain: "my-web-d9b5c.firebaseapp.com",
-      projectId: "my-web-d9b5c",
-      storageBucket: "my-web-d9b5c.firebasestorage.app",
-      messagingSenderId: "132492034861",
-      appId: "1:132492034861:web:0b4f75ea61754215ae09a4",
-      measurementId: "G-HP9NT7LFKM"
-    };
-
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
+    // 如果有設定檔才初始化 Firebase
+    if (firebaseConfigStr) {
+      try {
+        const firebaseConfig = JSON.parse(firebaseConfigStr);
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+      } catch (e) {
+        console.error("Firebase config parsing error", e);
+      }
+    } else {
+      // 提供一組預設供展示用，實際運行時會被環境變數覆蓋
+      const defaultConfig = {
+        apiKey: "demo-key", projectId: "demo-project"
+      };
+      app = initializeApp(defaultConfig);
+      auth = getAuth(app);
+      db = getFirestore(app);
+    }
 
     // --- 圖示元件 ---
     const Book = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>;
     const Notebook = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><rect width="16" height="20" x="4" y="2" rx="2"/></svg>;
     const FileText = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>;
     const Plus = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
+    const Minus = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/></svg>;
     const Info = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>;
     const Sparkles = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>;
     const CalendarDays = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>;
@@ -214,10 +221,10 @@
         setNewStudentNum('');
       };
       
+      // 刪除單一學生
       const handleDeleteStudent = async (studentId) => {
         if (db && user) {
           await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'students', studentId));
-          // 可選擇性清理紀錄
           await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', studentId));
         } else {
           setStudents(students.filter(s => s.id !== studentId));
@@ -239,6 +246,58 @@
         } else {
           const currentIds = new Set(classStudents.map(s => s.id));
           setStudents(students.filter(s => !currentIds.has(s.id)));
+        }
+      };
+
+      // 新增欠交紀錄 (支援指定日期)
+      const handleAddRecord = async (studentId, itemType, selectedDate = getTodayString()) => {
+        const newEvent = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          date: selectedDate,
+          type: itemType.id,
+          name: itemType.name,
+          timestamp: Date.now()
+        };
+        
+        const currentEvents = records[studentId]?.events || [];
+        const updatedDoc = { events: [...currentEvents, newEvent] };
+        
+        if (db && user) {
+          await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', studentId), updatedDoc);
+        } else {
+          setRecords(prev => ({ ...prev, [studentId]: updatedDoc }));
+        }
+      };
+
+      // 減少最新的一筆特定欠交紀錄
+      const handleRemoveLatestRecord = async (studentId, typeId) => {
+        const currentEvents = records[studentId]?.events || [];
+        // 找出該類別最新的一筆紀錄 (最後加入的)
+        const targetIndex = currentEvents.map(e => e.type).lastIndexOf(typeId);
+        
+        if (targetIndex === -1) return; // 沒有可以刪除的紀錄
+
+        const updatedEvents = [...currentEvents];
+        updatedEvents.splice(targetIndex, 1); // 刪除那一筆
+        const updatedDoc = { events: updatedEvents };
+
+        if (db && user) {
+          await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', studentId), updatedDoc);
+        } else {
+          setRecords(prev => ({ ...prev, [studentId]: updatedDoc }));
+        }
+      };
+
+      // 刪除特定歷史紀錄 (用於彈出視窗)
+      const handleDeleteRecord = async (studentId, eventId) => {
+        const currentEvents = records[studentId]?.events || [];
+        const updatedEvents = currentEvents.filter(e => e.id !== eventId);
+        const updatedDoc = { events: updatedEvents };
+
+        if (db && user) {
+          await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', studentId), updatedDoc);
+        } else {
+          setRecords(prev => ({ ...prev, [studentId]: updatedDoc }));
         }
       };
 
@@ -289,39 +348,6 @@
         setIsBulkMode(false);
       };
 
-      // 新增欠交紀錄 (支援指定日期)
-      const handleAddRecord = async (studentId, itemType, selectedDate = getTodayString()) => {
-        const newEvent = {
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-          date: selectedDate,
-          type: itemType.id,
-          name: itemType.name,
-          timestamp: Date.now()
-        };
-        
-        const currentEvents = records[studentId]?.events || [];
-        const updatedDoc = { events: [...currentEvents, newEvent] };
-        
-        if (db && user) {
-          await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', studentId), updatedDoc);
-        } else {
-          setRecords(prev => ({ ...prev, [studentId]: updatedDoc }));
-        }
-      };
-
-      // 刪除單筆欠交紀錄
-      const handleDeleteRecord = async (studentId, eventId) => {
-        const currentEvents = records[studentId]?.events || [];
-        const updatedEvents = currentEvents.filter(e => e.id !== eventId);
-        const updatedDoc = { events: updatedEvents };
-
-        if (db && user) {
-          await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', studentId), updatedDoc);
-        } else {
-          setRecords(prev => ({ ...prev, [studentId]: updatedDoc }));
-        }
-      };
-
 
       if (!isLoaded) {
         return (
@@ -363,20 +389,10 @@
               </div>
               
               <button onClick={() => setShowTooltip(showTooltip === 'year' ? null : 'year')} className="px-4 py-2 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 rounded-full text-sm font-bold transition-colors relative">
-                關於全年紀錄
+                關於全年紀錄與修改
                 {showTooltip === 'year' && (
                   <div className="absolute top-full left-0 md:left-1/2 md:-translate-x-1/2 mt-2 w-64 bg-slate-800 text-white p-3 rounded-xl text-sm shadow-xl z-20 font-normal">
-                    <p>這裡的次數是「一整學年」的總和，不會每個月歸零。您可以點擊學生的「日曆與紀錄」來查看具體是哪一天忘記帶東西喔！</p>
-                    <div className="absolute -top-2 left-10 md:left-1/2 md:-translate-x-1/2 border-8 border-transparent border-b-slate-800"></div>
-                  </div>
-                )}
-              </button>
-
-              <button onClick={() => setShowTooltip(showTooltip === 'date' ? null : 'date')} className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-full text-sm font-bold transition-colors relative">
-                如何補登過去的日期？
-                {showTooltip === 'date' && (
-                  <div className="absolute top-full left-0 md:left-1/2 md:-translate-x-1/2 mt-2 w-64 bg-slate-800 text-white p-3 rounded-xl text-sm shadow-xl z-20 font-normal">
-                    <p>列表上的快速按鈕預設為「今天」。如果需要補登昨天的紀錄，請點擊學生的「歷史紀錄」按鈕，在彈出視窗中選擇日期再新增即可。</p>
+                    <p>如果手滑按錯了，可以直接按該物品旁邊的「減號 ( - )」扣除一次。想查閱具體日期，可點擊學生的「紀錄」按鈕喔！</p>
                     <div className="absolute -top-2 left-10 md:left-1/2 md:-translate-x-1/2 border-8 border-transparent border-b-slate-800"></div>
                   </div>
                 )}
@@ -451,30 +467,39 @@
 
                         {/* 快速登記區 & 操作 */}
                         <div className="flex flex-wrap items-center gap-3">
-                          <div className="flex items-center bg-slate-50 p-1.5 rounded-xl border border-slate-100">
-                            <span className="text-xs font-bold text-slate-400 px-2 hidden sm:block">快速登記 (今天)</span>
+                          
+                          {/* 包含減少與增加功能的按鈕群組 */}
+                          <div className="flex flex-wrap items-center gap-2">
                             {ITEM_TYPES.map(item => {
                               const Icon = item.icon;
                               const count = student.counts[item.id] || 0;
                               return (
-                                <button 
-                                  key={item.id}
-                                  onClick={() => handleAddRecord(student.id, item)}
-                                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-sm transition-colors ${item.hover} ${item.color} ${count > 0 ? item.bg + ' border ' + item.border : 'bg-transparent border border-transparent'}`}
-                                  title={`登記今日欠交：${item.name}`}
-                                >
-                                  <Icon className="w-4 h-4"/> 
-                                  <span className="hidden md:inline">{item.name}</span>
-                                  {count > 0 && <span className="ml-1 bg-white/60 px-1.5 rounded-md text-xs">{count}</span>}
-                                  <Plus className="w-3 h-3 ml-auto opacity-50 xl:hidden"/>
-                                </button>
+                                <div key={item.id} className={`flex items-center p-1 rounded-xl border transition-colors ${count > 0 ? item.bg + ' ' + item.border : 'bg-slate-50 border-slate-100 hover:border-slate-200'}`}>
+                                  <button 
+                                    onClick={() => handleRemoveLatestRecord(student.id, item.id)} 
+                                    disabled={count === 0}
+                                    className={`p-1.5 rounded-lg transition-colors ${count > 0 ? 'text-slate-400 hover:text-rose-500 hover:bg-white/70' : 'text-slate-300 opacity-40 cursor-not-allowed'}`}
+                                    title={`減少一次 ${item.name}`}
+                                  >
+                                    <Minus className="w-3.5 h-3.5"/>
+                                  </button>
+                                  <button 
+                                    onClick={() => handleAddRecord(student.id, item)}
+                                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg font-bold text-sm transition-colors ${item.color} hover:bg-white/70`}
+                                    title={`新增一次 ${item.name} (今天)`}
+                                  >
+                                    <Icon className="w-4 h-4"/> 
+                                    <span className="hidden md:inline">{item.name}</span>
+                                    {count > 0 && <span className="ml-1 bg-white px-1.5 py-0.5 rounded-md text-xs shadow-sm border border-slate-100">{count}</span>}
+                                  </button>
+                                </div>
                               )
                             })}
                           </div>
                           
                           <div className="w-px h-8 bg-slate-200 hidden xl:block"></div>
 
-                          {/* 歷史紀錄與刪除 */}
+                          {/* 歷史紀錄與刪除單一學生 */}
                           <div className="flex items-center gap-2 ml-auto">
                             <button 
                               onClick={() => setDetailModalStudent(student)} 
@@ -483,14 +508,15 @@
                               <CalendarDays className="w-4 h-4"/> 紀錄
                             </button>
 
+                            {/* 刪除單一學生按鈕 (垃圾桶) */}
                             {deletingId === student.id ? (
                               <div className="flex items-center gap-1 bg-rose-50 p-1 rounded-xl border border-rose-200 absolute right-2 xl:static z-10 shadow-md xl:shadow-none">
-                                <span className="text-xs text-rose-600 font-bold px-1">刪除？</span>
+                                <span className="text-xs text-rose-600 font-bold px-1">刪除此生？</span>
                                 <button onClick={() => handleDeleteStudent(student.id)} className="px-2 py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-xs font-bold transition-colors">是</button>
                                 <button onClick={() => setDeletingId(null)} className="px-2 py-1.5 bg-white hover:bg-slate-100 text-slate-600 rounded-lg text-xs font-bold transition-colors border border-slate-200">否</button>
                               </div>
                             ) : (
-                              <button onClick={() => setDeletingId(student.id)} className="p-2 text-slate-300 hover:bg-rose-50 hover:text-rose-500 rounded-xl transition-colors" title="刪除學生">
+                              <button onClick={() => setDeletingId(student.id)} className="p-2 text-slate-300 hover:bg-rose-50 hover:text-rose-500 rounded-xl transition-colors" title="刪除這位學生">
                                 <Trash2 className="w-4.5 h-4.5"/>
                               </button>
                             )}
@@ -564,7 +590,7 @@
                             key={item.id}
                             onClick={() => {
                               handleAddRecord(detailModalStudent.id, item, currentDate);
-                              // 為了讓彈出視窗即時更新，手動更新 local state 的 student (因為 useMemo 在外層)
+                              // 為了讓彈出視窗即時更新，手動更新 local state 的 student
                               const newEvent = { id: Date.now().toString(), date: currentDate, type: item.id, name: item.name };
                               setDetailModalStudent(prev => ({
                                 ...prev, 
